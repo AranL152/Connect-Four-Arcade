@@ -442,7 +442,7 @@ void draw_board(void) {
 }
 
 // ============================================================
-// SECTION 3d: Bounce drop animation
+// SECTION 3d: Smooth drop animation
 // ============================================================
 
 void delay_loop(int count) {
@@ -450,26 +450,129 @@ void delay_loop(int count) {
     for (d = 0; d < count; d++);
 }
 
-// Redraw a single column of the board (blue bg + all cells in that column)
-void redraw_column(int col) {
-    int r;
-    int x1 = BOARD_X + col * (CELL_SIZE + CELL_GAP) - 1;
-    int x2 = x1 + CELL_SIZE + 2;
-    int y1 = BOARD_Y - 2;
-    int y2 = BOARD_Y + ROWS * (CELL_SIZE + CELL_GAP) + 1;
-    // Refill blue for this column strip
-    draw_rect(x1, y1, x2, y2, BLUE);
-    // Redraw all cells in this column
-    for (r = 0; r < ROWS; r++)
-        draw_cell(r, col);
+// Get center Y of a given row's cell hole
+int cell_center_y(int row) {
+    return BOARD_Y + row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2;
 }
 
-void draw_anim_frame(int col, int anim_y, short int color) {
-    // 1) Redraw the column cleanly (erases any previous anim circle)
-    redraw_column(col);
-    // 2) Draw the animated piece at anim_y
-    int cx = BOARD_X + col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2;
-    draw_circle(cx, anim_y, CIRCLE_R - 1, color);
+// Get center X of a given col's cell hole
+int cell_center_x(int col) {
+    return BOARD_X + col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2;
+}
+
+// Find which row a y-coordinate is closest to (for this column)
+// Returns the row index (0 to ROWS-1), clamped
+int nearest_row(int y) {
+    int best_row = 0;
+    int best_dist = 99999;
+    int r;
+    for (r = 0; r < ROWS; r++) {
+        int cy = cell_center_y(r);
+        int dist = y - cy;
+        if (dist < 0) dist = -dist;
+        if (dist < best_dist) {
+            best_dist = dist;
+            best_row = r;
+        }
+    }
+    return best_row;
+}
+
+// Draw a colored piece ONLY within the black hole of a specific cell.
+// This means: for each pixel of the piece circle, only draw it if that
+// pixel is also within the cell hole circle. Blue frame is never touched.
+void draw_piece_in_hole(int hole_row, int col, int piece_cy, int piece_r, short int color) {
+    int hcx = cell_center_x(col);
+    int hcy = cell_center_y(hole_row);
+    int hr = CIRCLE_R; // hole radius
+
+    // We draw the intersection of two circles:
+    // the piece (centered at hcx, piece_cy with radius piece_r)
+    // and the hole (centered at hcx, hcy with radius hr)
+
+    // Bounding box is the hole circle (we only care about pixels in the hole)
+    int px, py;
+    for (py = -hr; py <= hr; py++) {
+        for (px = -hr; px <= hr; px++) {
+            int sx = hcx + px;
+            int sy = hcy + py;
+
+            // Must be inside the hole circle
+            if (px * px + py * py > hr * hr) continue;
+
+            // Must be inside the piece circle
+            int dx = sx - hcx;
+            int dy = sy - piece_cy;
+            if (dx * dx + dy * dy > piece_r * piece_r) continue;
+
+            plot_pixel(sx, sy, color);
+        }
+    }
+}
+
+// Clear any trace of the animated piece from a hole by redrawing it
+// as black, then redrawing any existing board piece in that cell
+void clear_hole(int row, int col) {
+    int hcx = cell_center_x(col);
+    int hcy = cell_center_y(row);
+    // Fill hole with black
+    draw_circle(hcx, hcy, CIRCLE_R, BLACK);
+    // Redraw existing piece if any
+    if (board[row][col] == PLAYER)
+        draw_circle(hcx, hcy, CIRCLE_R - 1, player_color);
+    else if (board[row][col] == AI)
+        draw_circle(hcx, hcy, CIRCLE_R - 1, YELLOW);
+}
+
+// Draw the animated piece at position piece_cy, visible through all
+// holes it overlaps in this column
+void draw_anim(int col, int piece_cy, int piece_r, short int color) {
+    int r;
+    for (r = 0; r < ROWS; r++) {
+        int hcy = cell_center_y(r);
+        int dist = piece_cy - hcy;
+        if (dist < 0) dist = -dist;
+        // Does the piece circle overlap this hole circle?
+        if (dist < piece_r + CIRCLE_R) {
+            draw_piece_in_hole(r, col, piece_cy, piece_r, color);
+        }
+    }
+}
+
+// Erase the animated piece: clear only holes that old position touched
+// but new position does NOT touch. This prevents flicker on shared holes.
+void erase_anim_selective(int col, int old_cy, int new_cy, int piece_r) {
+    int r;
+    for (r = 0; r < ROWS; r++) {
+        int hcy = cell_center_y(r);
+        // Was this hole touched by old position?
+        int old_dist = old_cy - hcy;
+        if (old_dist < 0) old_dist = -old_dist;
+        int old_touched = (old_dist < piece_r + CIRCLE_R);
+
+        // Is this hole touched by new position?
+        int new_dist = new_cy - hcy;
+        if (new_dist < 0) new_dist = -new_dist;
+        int new_touched = (new_dist < piece_r + CIRCLE_R);
+
+        // Only clear holes that old touched but new doesn't
+        if (old_touched && !new_touched) {
+            clear_hole(r, col);
+        }
+    }
+}
+
+// Erase all holes touched by the piece at this position
+void erase_anim_all(int col, int piece_cy, int piece_r) {
+    int r;
+    for (r = 0; r < ROWS; r++) {
+        int hcy = cell_center_y(r);
+        int dist = piece_cy - hcy;
+        if (dist < 0) dist = -dist;
+        if (dist < piece_r + CIRCLE_R) {
+            clear_hole(r, col);
+        }
+    }
 }
 
 void drop_piece_animated(int col, int piece) {
@@ -477,43 +580,81 @@ void drop_piece_animated(int col, int piece) {
     if (target_row < 0) return;
 
     short int color = (piece == PLAYER) ? player_color : YELLOW;
-    int target_y = BOARD_Y + target_row * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2;
-    int start_y = BOARD_Y + CELL_SIZE / 2;
+    int target_y = cell_center_y(target_row);
+    int start_y = cell_center_y(0); // start at top row hole
+    int piece_r = CIRCLE_R - 1;
 
     // Phase 1: Fall with gravity
     int y = start_y;
-    int velocity = 2;
+    int prev_y = start_y;
+    int velocity = 0;
+    int first = 1;
 
     while (y < target_y) {
-        draw_anim_frame(col, y, color);
-        delay_loop(5000);
+        if (!first) {
+            // Draw at new position FIRST, then erase only leftover holes
+            draw_anim(col, y, piece_r, color);
+            erase_anim_selective(col, prev_y, y, piece_r);
+        } else {
+            draw_anim(col, y, piece_r, color);
+        }
+        delay_loop(30000);
+
+        first = 0;
+        prev_y = y;
         velocity += 2;
         y += velocity;
         if (y > target_y) y = target_y;
     }
 
-    // Phase 2: Bounce - simulate with decreasing peak heights
-    int bounce_peak = 10;
+    // Snap to target — draw new, clean old
+    draw_anim(col, target_y, piece_r, color);
+    erase_anim_selective(col, prev_y, target_y, piece_r);
+    delay_loop(20000);
+
+    // Phase 2: Bounce
+    int bounce_height = (CELL_SIZE + CELL_GAP); // ~30px, almost one full cell
     int b;
-    for (b = 0; b < 3 && bounce_peak >= 3; b++) {
+    for (b = 0; b < 3 && bounce_height >= 4; b++) {
+        int prev_offset = 0;
+
         // Rise
-        int step;
-        for (step = 2; step <= bounce_peak; step += 2) {
-            draw_anim_frame(col, target_y - step, color);
-            delay_loop(4000);
+        int offset;
+        for (offset = 2; offset <= bounce_height; offset += 2) {
+            int new_y = target_y - offset;
+            int old_y = target_y - prev_offset;
+            draw_anim(col, new_y, piece_r, color);
+            erase_anim_selective(col, old_y, new_y, piece_r);
+            delay_loop(24000);
+            prev_offset = offset;
         }
-        // Fall back
-        for (step = bounce_peak; step >= 0; step -= 2) {
-            draw_anim_frame(col, target_y - step, color);
-            delay_loop(4000);
+
+        // Fall back down
+        for (offset = bounce_height - 2; offset >= 0; offset -= 2) {
+            int new_y = target_y - offset;
+            int old_y = target_y - prev_offset;
+            draw_anim(col, new_y, piece_r, color);
+            erase_anim_selective(col, old_y, new_y, piece_r);
+            delay_loop(24000);
+            prev_offset = offset;
         }
-        bounce_peak = bounce_peak * 2 / 3;
+
+        // Ensure we end exactly at target_y
+        draw_anim(col, target_y, piece_r, color);
+        erase_anim_selective(col, target_y - prev_offset, target_y, piece_r);
+
+        bounce_height = bounce_height * 2 / 5; // ~30 -> 12 -> 4
     }
 
-    // Commit piece to board and redraw final state
+    // Final cleanup: only clear the target cell hole, then commit
+    erase_anim_all(col, target_y, piece_r);
+
+    // Commit piece to board
     board[target_row][col] = piece;
     turn_count++;
-    redraw_column(col);
+
+    // Draw the final piece properly
+    draw_cell(target_row, col);
     prev_board[target_row][col] = piece;
 }
 
