@@ -322,43 +322,79 @@ void draw_string(int x, int y, const char *str, short int color) {
 // SECTION 3b: Title screen
 // ============================================================
 
+// Draw a horizontal line
+void draw_hline(int x1, int x2, int y, short int color) {
+    int x;
+    for (x = x1; x <= x2; x++) plot_pixel(x, y, color);
+}
+
 void draw_title_screen(void) {
     clear_screen();
 
-    // Big title
-    draw_string(100, 30, "CONNECT 4", WHITE);
+    // Title: "CONNECT 4" centered (9 chars * 6px = 54px wide, center of 320 = 133)
+    draw_string(133, 15, "CONNECT 4", WHITE);
 
-    // Decorative circles
-    draw_circle(80, 80, 15, RED);
-    draw_circle(160, 80, 15, YELLOW);
-    draw_circle(240, 80, 15, RED);
+    // Decorative line under title
+    draw_hline(100, 220, 25, GREY);
 
-    // Color selection
-    draw_string(80, 115, "Your color:", WHITE);
-    draw_circle(210, 118, 10, player_color);
-    // Clear name area and redraw
-    draw_rect(80, 132, 250, 142, BLACK);
-    draw_string(80, 133, "< ", WHITE);
-    draw_string(92, 133, color_names[player_color_idx], player_color);
-    draw_string(92 + 6 * 8, 133, " >", WHITE);
+    // Row of small alternating pieces as decoration
+    int dx;
+    for (dx = 0; dx < 7; dx++) {
+        int cx = 82 + dx * 24;
+        short int c = (dx % 2 == 0) ? RED : YELLOW;
+        draw_circle(cx, 45, 8, c);
+    }
 
-    // Play button
-    draw_rect(110, 160, 210, 185, BLUE);
-    draw_string(136, 168, "PLAY", WHITE);
+    // Another decorative line
+    draw_hline(100, 220, 58, GREY);
 
-    // Instructions
-    draw_string(50, 205, "Left/Right: change color", GREY);
-    draw_string(60, 218, "Enter: start game", GREY);
+    // "Choose your color" label centered
+    draw_string(103, 75, "Choose color:", WHITE);
+
+    // Color preview circle
+    draw_circle(160, 100, 10, player_color);
+
+    // Color name with arrows: "< Red >"
+    // Clear area and draw
+    draw_rect(90, 116, 230, 126, BLACK);
+    draw_string(120, 117, "<", WHITE);
+    // Center the color name (max 7 chars = 42px, center around 160)
+    int name_len = 0;
+    const char *nm = color_names[player_color_idx];
+    while (nm[name_len]) name_len++;
+    int name_x = 160 - (name_len * 6) / 2;
+    draw_string(name_x, 117, color_names[player_color_idx], player_color);
+    draw_string(192, 117, ">", WHITE);
+
+    // Play button — rounded look with border
+    draw_rect(120, 140, 200, 160, BLUE);
+    draw_rect(121, 141, 199, 159, BLUE);  // slightly inset for clean edges
+    draw_string(142, 147, "PLAY", WHITE);
+
+    // Instructions at bottom
+    draw_hline(80, 240, 175, GREY);
+    draw_string(82, 185, "Left/Right: color", GREY);
+    draw_string(82, 197, "Enter: start game", GREY);
+
+    // Small credit
+    draw_string(112, 225, "ECE243 2026", GREY);
 }
 
 void update_title_color(void) {
     player_color = color_options[player_color_idx];
-    // Only redraw the color-related parts
-    draw_circle(210, 118, 10, player_color);
-    draw_rect(80, 132, 250, 142, BLACK);
-    draw_string(80, 133, "< ", WHITE);
-    draw_string(92, 133, color_names[player_color_idx], player_color);
-    draw_string(92 + 6 * 8, 133, " >", WHITE);
+
+    // Redraw color circle
+    draw_circle(160, 100, 10, player_color);
+
+    // Redraw color name
+    draw_rect(90, 116, 230, 126, BLACK);
+    draw_string(120, 117, "<", WHITE);
+    int name_len = 0;
+    const char *nm = color_names[player_color_idx];
+    while (nm[name_len]) name_len++;
+    int name_x = 160 - (name_len * 6) / 2;
+    draw_string(name_x, 117, color_names[player_color_idx], player_color);
+    draw_string(192, 117, ">", WHITE);
 }
 
 // ============================================================
@@ -598,7 +634,7 @@ void drop_piece_animated(int col, int piece) {
         } else {
             draw_anim(col, y, piece_r, color);
         }
-        delay_loop(30000);
+        delay_loop(45000);
 
         first = 0;
         prev_y = y;
@@ -610,7 +646,7 @@ void drop_piece_animated(int col, int piece) {
     // Snap to target — draw new, clean old
     draw_anim(col, target_y, piece_r, color);
     erase_anim_selective(col, prev_y, target_y, piece_r);
-    delay_loop(20000);
+    delay_loop(30000);
 
     // Phase 2: Bounce
     int bounce_height = (CELL_SIZE + CELL_GAP); // ~30px, almost one full cell
@@ -625,7 +661,7 @@ void drop_piece_animated(int col, int piece) {
             int old_y = target_y - prev_offset;
             draw_anim(col, new_y, piece_r, color);
             erase_anim_selective(col, old_y, new_y, piece_r);
-            delay_loop(24000);
+            delay_loop(36000);
             prev_offset = offset;
         }
 
@@ -635,7 +671,7 @@ void drop_piece_animated(int col, int piece) {
             int old_y = target_y - prev_offset;
             draw_anim(col, new_y, piece_r, color);
             erase_anim_selective(col, old_y, new_y, piece_r);
-            delay_loop(24000);
+            delay_loop(36000);
             prev_offset = offset;
         }
 
