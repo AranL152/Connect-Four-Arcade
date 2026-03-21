@@ -293,6 +293,58 @@ void draw_circle(int cx, int cy, int r, short int color) {
                 plot_pixel(cx + x, cy + y, color);
 }
 
+// Darken/lighten a RGB565 color by a given step amount
+short int darken565(short int color, int amt) {
+    int r = (color >> 11) & 0x1F;
+    int g = (color >> 5)  & 0x3F;
+    int b =  color        & 0x1F;
+    r = r > amt     ? r - amt     : 0;
+    g = g > amt * 2 ? g - amt * 2 : 0;
+    b = b > amt     ? b - amt     : 0;
+    return (short int)((r << 11) | (g << 5) | b);
+}
+
+short int lighten565(short int color, int amt) {
+    int r = (color >> 11) & 0x1F;
+    int g = (color >> 5)  & 0x3F;
+    int b =  color        & 0x1F;
+    r = r + amt     < 32 ? r + amt     : 31;
+    g = g + amt * 2 < 64 ? g + amt * 2 : 63;
+    b = b + amt     < 32 ? b + amt     : 31;
+    return (short int)((r << 11) | (g << 5) | b);
+}
+
+// Draw a circle shaded to look like a 3D sphere.
+// Light source is top-left. Uses 4 diffuse bands + a specular highlight spot.
+void draw_circle_3d(int cx, int cy, int r, short int color) {
+    int x, y;
+    int lum_max = r * r;
+    for (y = -r; y <= r; y++) {
+        for (x = -r; x <= r; x++) {
+            int d2 = x * x + y * y;
+            if (d2 > r * r) continue;
+            // Luminance: dot product of sphere normal with light direction (-1,-1,+1).
+            // z-component approximated as (r^2 - d2)/r (parabolic, peaks at center).
+            int lum = (-x - y) * r / 2 + (r * r - d2);
+            short int pc;
+            if      (lum > lum_max * 3 / 4) pc = lighten565(color, 8);
+            else if (lum > lum_max     / 4) pc = lighten565(color, 3);
+            else if (lum > -lum_max    / 4) pc = color;
+            else                            pc = darken565(color, 6);
+            plot_pixel(cx + x, cy + y, pc);
+        }
+    }
+    // Specular highlight: small bright spot in upper-left quadrant
+    int hx = cx - r / 3;
+    int hy = cy - r / 3;
+    int sr = r / 4;
+    if (sr < 1) sr = 1;
+    for (y = -sr; y <= sr; y++)
+        for (x = -sr; x <= sr; x++)
+            if (x * x + y * y <= sr * sr)
+                plot_pixel(hx + x, hy + y, lighten565(color, 13));
+}
+
 void draw_char(int x, int y, char c, short int color) {
     int idx;
     if (c >= 0x20 && c <= 0x7A)
@@ -406,9 +458,9 @@ void draw_cell(int r, int c) {
     int cy = BOARD_Y + r * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2;
     draw_circle(cx, cy, CIRCLE_R, BLACK);
     if (board[r][c] == PLAYER)
-        draw_circle(cx, cy, CIRCLE_R - 1, player_color);
+        draw_circle_3d(cx, cy, CIRCLE_R - 1, player_color);
     else if (board[r][c] == AI)
-        draw_circle(cx, cy, CIRCLE_R - 1, YELLOW);
+        draw_circle_3d(cx, cy, CIRCLE_R - 1, YELLOW);
 }
 
 void draw_cursor(int col) {
@@ -436,9 +488,23 @@ void draw_board(void) {
         draw_rect(0, 0, SCREEN_W - 1, 14, BLACK);
         draw_string(120, 2, "CONNECT 4", WHITE);
 
-        draw_rect(BOARD_X - 2, BOARD_Y - 2,
-                  BOARD_X + COLS * (CELL_SIZE + CELL_GAP) + 1,
-                  BOARD_Y + ROWS * (CELL_SIZE + CELL_GAP) + 1, BLUE);
+        {
+            // Beveled board: medium blue face, light top-left edge, dark bottom-right edge
+            int bx1 = BOARD_X - 2;
+            int by1 = BOARD_Y - 2;
+            int bx2 = BOARD_X + COLS * (CELL_SIZE + CELL_GAP) + 1;
+            int by2 = BOARD_Y + ROWS * (CELL_SIZE + CELL_GAP) + 1;
+            short int board_mid   = 0x2196; // richer medium blue (#2060B0 approx)
+            short int board_light = lighten565(board_mid, 7);
+            short int board_dark  = darken565(board_mid, 6);
+            draw_rect(bx1, by1, bx2, by2, board_mid);
+            // Top & left highlight (light source from top-left)
+            draw_rect(bx1, by1, bx2,     by1 + 1, board_light);
+            draw_rect(bx1, by1, bx1 + 1, by2,     board_light);
+            // Bottom & right shadow
+            draw_rect(bx1, by2 - 1, bx2, by2,     board_dark);
+            draw_rect(bx2 - 1, by1, bx2, by2,     board_dark);
+        }
 
         for (r = 0; r < ROWS; r++)
             for (c = 0; c < COLS; c++)
@@ -555,9 +621,9 @@ void clear_hole(int row, int col) {
     draw_circle(hcx, hcy, CIRCLE_R, BLACK);
     // Redraw existing piece if any
     if (board[row][col] == PLAYER)
-        draw_circle(hcx, hcy, CIRCLE_R - 1, player_color);
+        draw_circle_3d(hcx, hcy, CIRCLE_R - 1, player_color);
     else if (board[row][col] == AI)
-        draw_circle(hcx, hcy, CIRCLE_R - 1, YELLOW);
+        draw_circle_3d(hcx, hcy, CIRCLE_R - 1, YELLOW);
 }
 
 // Draw the animated piece at position piece_cy, visible through all
