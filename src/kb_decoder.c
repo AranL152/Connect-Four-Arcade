@@ -1,5 +1,8 @@
 #include "address_map.h"
 
+#define LEDR_BASE 0xFF200000
+#define PS2_BASE 0xFF200100
+
 // Data registers
 #define PS2_DATA ((volatile int*)PS2_BASE)
 #define PS2_CTRL ((volatile int*)(PS2_BASE + 4))
@@ -118,6 +121,7 @@ void enable_interrupts(void) {
 }
 
 // testing process
+/*
 int main(void) {
   PS2_SETUP();
   enable_interrupts();
@@ -138,3 +142,4 @@ int main(void) {
     }
   }
 }
+*/
