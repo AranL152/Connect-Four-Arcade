@@ -136,14 +136,14 @@ void TIMER_SETUP(void) {
   *TIMER_CTRL = 0x8;           // STOP timer during config
   *TIMER_PERIOD_LO = 0xE100;   // low 16 bits of 100,000,000
   *TIMER_PERIOD_HI = 0x05F5;   // high 16 bits of 100,000,000
-  *TIMER_STATUS = 0;            // clear any pending timeout
-  *TIMER_CTRL = 0x7;            // START + CONT + ITO
+  *TIMER_STATUS = 0;            // clear any pending timeout from a previous run
+  *TIMER_CTRL = 0x7;            // START + CONT + ITO (enable interrupt)
 }
 
-// Reset timer back to TURN_TIME - called on each turn swap
+// Reset timer back to TURN_TIME 
 void reset_timer(void) {
   *TIMER_CTRL = 0x8;           // STOP
-  timer_seconds = TURN_TIME;
+  timer_seconds = TURN_TIME;   //reset to 10s
   timer_expired = 0;
   *TIMER_STATUS = 0;            // clear TO
   *TIMER_CTRL = 0x7;            // START + CONT + ITO
@@ -388,6 +388,7 @@ int cell_center_x(int col) {
 // Draw a colored piece only within the black hole of a specific cell
 void draw_piece_in_hole(int hole_row, int col, int piece_cy, int piece_r,
                         short int color) {
+                          //hole center
   int hcx = cell_center_x(col);
   int hcy = cell_center_y(hole_row);
   int hr = CIRCLE_R;
@@ -396,9 +397,11 @@ void draw_piece_in_hole(int hole_row, int col, int piece_cy, int piece_r,
     for (px = -hr; px <= hr; px++) {
       int sx = hcx + px;
       int sy = hcy + py;
+      //inside circle check
       if (px * px + py * py > hr * hr) continue;
       int dx = sx - hcx;
       int dy = sy - piece_cy;
+      //if pixel is also inside the falling pieces circle
       if (dx * dx + dy * dy > piece_r * piece_r) continue;
       plot_pixel(sx, sy, color);
     }
@@ -420,10 +423,12 @@ void clear_hole(int row, int col) {
 // Draw animated piece through all overlapping holes in this column
 void draw_anim(int col, int piece_cy, int piece_r, short int color) {
   int r;
+  //loop through all rows
   for (r = 0; r < ROWS; r++) {
     int hcy = cell_center_y(r);
     int dist = piece_cy - hcy;
     if (dist < 0) dist = -dist;
+    //if distance between piece center and hole center is less than piece rad to circle rad
     if (dist < piece_r + CIRCLE_R) {
       draw_piece_in_hole(r, col, piece_cy, piece_r, color);
     }
@@ -434,15 +439,15 @@ void draw_anim(int col, int piece_cy, int piece_r, short int color) {
 void erase_anim_selective(int col, int old_cy, int new_cy, int piece_r) {
   int r;
   for (r = 0; r < ROWS; r++) {
-    int hcy = cell_center_y(r);
-    int old_dist = old_cy - hcy;
+    int hcy = cell_center_y(r); //center of row r
+    int old_dist = old_cy - hcy; //vert dist between old cy and this holes center
     if (old_dist < 0) old_dist = -old_dist;
-    int old_touched = (old_dist < piece_r + CIRCLE_R);
-    int new_dist = new_cy - hcy;
+    int old_touched = (old_dist < piece_r + CIRCLE_R); //circles overlapped if dist between centers is less than sum of radii
+    int new_dist = new_cy - hcy; //vert dist between new cy and this holes center
     if (new_dist < 0) new_dist = -new_dist;
-    int new_touched = (new_dist < piece_r + CIRCLE_R);
+    int new_touched = (new_dist < piece_r + CIRCLE_R); 
     if (old_touched && !new_touched) {
-      clear_hole(r, col);
+      clear_hole(r, col); //if not overlapping anymore clear
     }
   }
 }
@@ -469,37 +474,37 @@ void drop_piece_animated(int col, int piece) {
   if (target_row < 0) return;
 
   short int color = (piece == PLAYER1) ? RED : YELLOW;
-  int target_y = cell_center_y(target_row);
-  int start_y = cell_center_y(0);
+  int target_y = cell_center_y(target_row); //where piece will end
+  int start_y = cell_center_y(0); //where piece will start, top row
   int piece_r = CIRCLE_R - 1;
 
   // Gravity fall
   int y = start_y;
   int prev_y = start_y;
   int velocity = 0;
-  int first = 1;
+  int first = 1; //first frame flag
 
-  while (y < target_y) {
-    if (!first) {
-      draw_anim(col, y, piece_r, color);
+  while (y < target_y) { 
+    if (!first) { //on frames not first, call erase to clean up where piece was
+      draw_anim(col, y, piece_r, color); 
       erase_anim_selective(col, prev_y, y, piece_r);
-    } else {
+    } else { 
       draw_anim(col, y, piece_r, color);
     }
-    delay_loop(45000);
+    delay_loop(45000); //control animation speed
 
-    first = 0;
-    prev_y = y;
+    first = 0; //no longer first flag
+    prev_y = y; 
     velocity += 2;
     y += velocity;
-    if (y > target_y) y = target_y;
+    if (y > target_y) y = target_y; //prevent from overshooting target
   }
 
-  // Snap to final position
+  // Snap to final position and clean up
   draw_anim(col, target_y, piece_r, color);
   erase_anim_selective(col, prev_y, target_y, piece_r);
 
-  // Final cleanup
+  // Final cleanup of all holes pieces touched
   erase_anim_all(col, target_y, piece_r);
 
   // Commit piece to board and draw final piece using existing draw_cell
@@ -638,7 +643,6 @@ void runGame() {
   reset_timer();
 
   while (1) {
-    // Atomically read and clear currInput + snapshot timer to avoid race with ISR
     __asm__ volatile("csrc mstatus, %0" ::"r"(0b1000));  // disable interrupts
     kbUserInput = currInput;
     currInput = NONE;
@@ -663,7 +667,7 @@ void runGame() {
       cursorColor = (currentPlayer == PLAYER1) ? RED : YELLOW;
       draw_cursor(currentColumn, cursorColor);
       reset_timer();
-      lastDrawnSeconds = -1;
+      lastDrawnSeconds = -1; //so new 10 gets drawn immediately
       prevInput = kbUserInput;
       continue;
     }
