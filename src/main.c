@@ -9,11 +9,16 @@ int main() {
   enable_interrupts();
 
   runGame();
+  resetBoard();
+
 }
 
 void runGame() {
   // Acquire keyboard input
   kbInputKey kbUserInput, prevInput;
+
+  //Pulse all inputs, ensuring they dont cause issues 
+  //by persisting accross clock cycles
   prevInput = NONE;
 
   int currentPlayer = PLAYER1;
@@ -26,26 +31,28 @@ void runGame() {
     kbUserInput = currInput;
     currInput = NONE;
     
-
-    //Pulse all inputs, ensuring they dont cause issues by persisting accross clock cycles
-
-
     if (kbUserInput == LEFT && prevInput != LEFT && currentColumn > 0) {
       currentColumn--;
       draw_cursor(currentColumn);
       currInput = NONE;
     }
-    if (kbUserInput == RIGHT && prevInput != RIGHT && currentColumn < COLS - 1) {
+    
+    if (kbUserInput == RIGHT && prevInput != RIGHT && currentColumn < (COLS - 1)) {
       currentColumn++;
       draw_cursor(currentColumn);
       currInput = NONE;
     }
 
+    //Only accept user input if on valid column
     if (kbUserInput == ENTER && prevInput != ENTER && is_valid_col(currentColumn)) {
+      //Place piece, save the row
       int currRow = place_piece(currentColumn, currentPlayer);
+
+      //Redraw board, reset keyboard input
       draw_board(currentColumn);
       currInput = NONE;
 
+      //Check if game has ended
       int winState = winDetected(currRow, currentColumn, currentPlayer);
       int drawState = DRAW_DETECTED(boardFull(), winState);
 
@@ -54,6 +61,8 @@ void runGame() {
       // Swap player
       currentPlayer = (currentPlayer == PLAYER1) ? PLAYER2 : PLAYER1;
     }
+
+    //Save this cycles input as prev input
     prevInput = kbUserInput;
   }
 }

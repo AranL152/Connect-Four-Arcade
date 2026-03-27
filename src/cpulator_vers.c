@@ -1,5 +1,4 @@
-// Requires all code in 1 file and address macros explicitly declared
-
+// CPULator Requires all code in 1 file and address macros explicitly declared
 
 //--------------------------------------------------kb_decoder.C-------------------------------------------------------//
 #define LEDR_BASE 0xFF200000

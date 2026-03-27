@@ -15,9 +15,6 @@ int get_open_row(int col) {
 }
 
 // Places a piece in board array
-// NOTE: implement a safeguard in gameloop
-// Dont let input even occur if not valid
-// Make sound or display somewhere its not valid
 // Return row where placed
 int place_piece(int col, int colour) {
   if (is_valid_col(col)) {
@@ -30,23 +27,22 @@ int place_piece(int col, int colour) {
 }
 
 int winDetected(int rowInput, int colInput, int colour) {
-  // go 4 in all directions from piece and check if theres any 4 in a rows
-  // Make sure that no moves exceed board bounds - if statement lock
-  // Keep running tally in that direction
-
+  // Initialize starting row and col
   int currRow = rowInput;
   int currCol = colInput;
   int counter;
 
+  // Loop through all 8 directions on board
   for (int dr = -1; dr <= 1; dr++) {
     for (int dc = -1; dc <= 1; dc++) {
-      // Skip duplicate directions accounted for by 2 while loops
+      // Skip duplicate directions accounted for by using 2 while loops
       if (!dr && !dc) continue;
       if (dr == 1) continue;
 
       counter = 1;
 
       // Walk positive direction
+      // Ensure bounds arent exceeded
       currRow = rowInput + dr;
       currCol = colInput + dc;
       while (inBoundRow(currRow) && inBoundCol(currCol) &&
@@ -77,7 +73,8 @@ int inBoundRow(int row) { return ((row >= 0) && (row < ROWS)); }
 
 int inBoundCol(int col) { return ((col >= 0) && (col < COLS)); }
 
-// less resource internsive
+// Based on if game has been won and if board is full
+//  less resource internsive to use a macro
 #define DRAW_DETECTED(fullBoard, win) fullBoard && !win
 
 int boardFull() {
