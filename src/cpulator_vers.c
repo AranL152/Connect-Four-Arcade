@@ -22,12 +22,12 @@
 // Status bit 0 = TO (timeout), write 0 to clear
 // Control: bit0=ITO, bit1=CONT, bit2=START, bit3=STOP
 #define TIMER_BASE_ADDR 0xFF202000
-#define TIMER_STATUS   ((volatile int*)TIMER_BASE_ADDR)
-#define TIMER_CTRL     ((volatile int*)(TIMER_BASE_ADDR + 4))
+#define TIMER_STATUS ((volatile int*)TIMER_BASE_ADDR)
+#define TIMER_CTRL ((volatile int*)(TIMER_BASE_ADDR + 4))
 #define TIMER_PERIOD_LO ((volatile int*)(TIMER_BASE_ADDR + 8))
 #define TIMER_PERIOD_HI ((volatile int*)(TIMER_BASE_ADDR + 12))
 #define TIMER_IRQ 0x80000010  // timer mcause value (mie bit 16)
-#define TURN_TIME 10      // seconds per move
+#define TURN_TIME 10          // seconds per move
 
 // Define internal alias for keyboard input
 typedef enum { NONE, LEFT, RIGHT, ENTER } kbInputKey;
@@ -132,20 +132,20 @@ void PS2_SETUP(void) {
 // Set interval timer to fire every 1 second
 // 100 MHz clock -> period = 100,000,000 = 0x05F5E100
 void TIMER_SETUP(void) {
-  *TIMER_CTRL = 0x8;           // STOP timer during config
-  *TIMER_PERIOD_LO = 0xE100;   // low 16 bits of 100,000,000
-  *TIMER_PERIOD_HI = 0x05F5;   // high 16 bits of 100,000,000
-  *TIMER_STATUS = 0;            // clear any pending timeout from a previous run
-  *TIMER_CTRL = 0x7;            // START + CONT + ITO (enable interrupt)
+  *TIMER_CTRL = 0x8;          // STOP timer during config
+  *TIMER_PERIOD_LO = 0xE100;  // low 16 bits of 100,000,000
+  *TIMER_PERIOD_HI = 0x05F5;  // high 16 bits of 100,000,000
+  *TIMER_STATUS = 0;          // clear any pending timeout from a previous run
+  *TIMER_CTRL = 0x7;          // START + CONT + ITO (enable interrupt)
 }
 
-// Reset timer back to TURN_TIME 
+// Reset timer back to TURN_TIME
 void reset_timer(void) {
-  *TIMER_CTRL = 0x8;           // STOP
-  timer_seconds = TURN_TIME;   //reset to 10s
+  *TIMER_CTRL = 0x8;          // STOP
+  timer_seconds = TURN_TIME;  // reset to 10s
   timer_expired = 0;
-  *TIMER_STATUS = 0;            // clear TO
-  *TIMER_CTRL = 0x7;            // START + CONT + ITO
+  *TIMER_STATUS = 0;  // clear TO
+  *TIMER_CTRL = 0x7;  // START + CONT + ITO
 }
 
 // Adapted largely from guide document given in quercus
@@ -262,7 +262,7 @@ void draw_circle(int cx, int cy, int r, short int color) {
       if (x * x + y * y <= r * r) plot_pixel(cx + x, cy + y, color);
 }
 
-//color shading for beveled board
+// color shading for beveled board
 short int darken565(short int color, int amt) {
   int r = (color >> 11) & 0x1F;
   int g = (color >> 5) & 0x3F;
@@ -310,8 +310,7 @@ void draw_timer(int seconds, short int color) {
   // Draw two-digit countdown (e.g. "10", " 5")
   int tens = seconds / 10;
   int ones = seconds % 10;
-  if (tens > 0)
-    draw_char(tx, ty, '0' + tens, color);
+  if (tens > 0) draw_char(tx, ty, '0' + tens, color);
   draw_char(tx + 7, ty, '0' + ones, color);
 }
 
@@ -325,7 +324,8 @@ void draw_cell(int r, int c) {
     draw_circle(cx, cy, CIRCLE_R - 1, YELLOW);
 }
 
-void draw_cursor(int col, short int color) {  //added color param for player turn indicator
+void draw_cursor(
+    int col, short int color) {  // added color param for player turn indicator
   draw_rect(BOARD_X - 2, BOARD_Y - 12,
             BOARD_X + COLS * (CELL_SIZE + CELL_GAP) + 1, BOARD_Y - 3, BLACK);
   int cx = BOARD_X + col * (CELL_SIZE + CELL_GAP) + CELL_SIZE / 2;
@@ -337,23 +337,24 @@ void draw_cursor(int col, short int color) {  //added color param for player tur
   }
 }
 
-void draw_board(int cursorColumn, short int cursorColor) {  //added cursorColor param
+void draw_board(int cursorColumn,
+                short int cursorColor) {  // added cursorColor param
   int r, c;
 
-  //beveled 3D board frame ---
+  // beveled 3D board frame ---
   int bx1 = BOARD_X - 2;
   int by1 = BOARD_Y - 2;
   int bx2 = BOARD_X + COLS * (CELL_SIZE + CELL_GAP) + 1;
   int by2 = BOARD_Y + ROWS * (CELL_SIZE + CELL_GAP) + 1;
-  short int board_mid   = 0x2196; //richer medium blue
+  short int board_mid = 0x2196;  // richer medium blue
   short int board_light = lighten565(board_mid, 7);
-  short int board_dark  = darken565(board_mid, 6);
+  short int board_dark = darken565(board_mid, 6);
 
   draw_rect(bx1, by1, bx2, by2, board_mid);
-  draw_rect(bx1, by1, bx2,     by1 + 1, board_light);
-  draw_rect(bx1, by1, bx1 + 1, by2,     board_light);
-  draw_rect(bx1, by2 - 1, bx2, by2,     board_dark);
-  draw_rect(bx2 - 1, by1, bx2, by2,     board_dark);
+  draw_rect(bx1, by1, bx2, by1 + 1, board_light);
+  draw_rect(bx1, by1, bx1 + 1, by2, board_light);
+  draw_rect(bx1, by2 - 1, bx2, by2, board_dark);
+  draw_rect(bx2 - 1, by1, bx2, by2, board_dark);
   //
 
   for (r = 0; r < ROWS; r++)
@@ -368,8 +369,7 @@ void draw_board(int cursorColumn, short int cursorColor) {  //added cursorColor 
   draw_cursor(cursorColumn, cursorColor);
 }
 
-//drop animation
-
+// drop animation
 
 void delay_loop(int count) {
   volatile int d;
@@ -387,7 +387,7 @@ int cell_center_x(int col) {
 // Draw a colored piece only within the black hole of a specific cell
 void draw_piece_in_hole(int hole_row, int col, int piece_cy, int piece_r,
                         short int color) {
-                          //hole center
+  // hole center
   int hcx = cell_center_x(col);
   int hcy = cell_center_y(hole_row);
   int hr = CIRCLE_R;
@@ -396,11 +396,11 @@ void draw_piece_in_hole(int hole_row, int col, int piece_cy, int piece_r,
     for (px = -hr; px <= hr; px++) {
       int sx = hcx + px;
       int sy = hcy + py;
-      //inside circle check
+      // inside circle check
       if (px * px + py * py > hr * hr) continue;
       int dx = sx - hcx;
       int dy = sy - piece_cy;
-      //if pixel is also inside the falling pieces circle
+      // if pixel is also inside the falling pieces circle
       if (dx * dx + dy * dy > piece_r * piece_r) continue;
       plot_pixel(sx, sy, color);
     }
@@ -422,12 +422,13 @@ void clear_hole(int row, int col) {
 // Draw animated piece through all overlapping holes in this column
 void draw_anim(int col, int piece_cy, int piece_r, short int color) {
   int r;
-  //loop through all rows
+  // loop through all rows
   for (r = 0; r < ROWS; r++) {
     int hcy = cell_center_y(r);
     int dist = piece_cy - hcy;
     if (dist < 0) dist = -dist;
-    //if distance between piece center and hole center is less than piece rad to circle rad
+    // if distance between piece center and hole center is less than piece rad
+    // to circle rad
     if (dist < piece_r + CIRCLE_R) {
       draw_piece_in_hole(r, col, piece_cy, piece_r, color);
     }
@@ -438,15 +439,19 @@ void draw_anim(int col, int piece_cy, int piece_r, short int color) {
 void erase_anim_selective(int col, int old_cy, int new_cy, int piece_r) {
   int r;
   for (r = 0; r < ROWS; r++) {
-    int hcy = cell_center_y(r); //center of row r
-    int old_dist = old_cy - hcy; //vert dist between old cy and this holes center
+    int hcy = cell_center_y(r);  // center of row r
+    int old_dist =
+        old_cy - hcy;  // vert dist between old cy and this holes center
     if (old_dist < 0) old_dist = -old_dist;
-    int old_touched = (old_dist < piece_r + CIRCLE_R); //circles overlapped if dist between centers is less than sum of radii
-    int new_dist = new_cy - hcy; //vert dist between new cy and this holes center
+    int old_touched =
+        (old_dist < piece_r + CIRCLE_R);  // circles overlapped if dist between
+                                          // centers is less than sum of radii
+    int new_dist =
+        new_cy - hcy;  // vert dist between new cy and this holes center
     if (new_dist < 0) new_dist = -new_dist;
-    int new_touched = (new_dist < piece_r + CIRCLE_R); 
+    int new_touched = (new_dist < piece_r + CIRCLE_R);
     if (old_touched && !new_touched) {
-      clear_hole(r, col); //if not overlapping anymore clear
+      clear_hole(r, col);  // if not overlapping anymore clear
     }
   }
 }
@@ -473,30 +478,31 @@ void drop_piece_animated(int col, int piece) {
   if (target_row < 0) return;
 
   short int color = (piece == PLAYER1) ? RED : YELLOW;
-  int target_y = cell_center_y(target_row); //where piece will end
-  int start_y = cell_center_y(0); //where piece will start, top row
+  int target_y = cell_center_y(target_row);  // where piece will end
+  int start_y = cell_center_y(0);            // where piece will start, top row
   int piece_r = CIRCLE_R - 1;
 
   // Gravity fall
   int y = start_y;
   int prev_y = start_y;
   int velocity = 0;
-  int first = 1; //first frame flag
+  int first = 1;  // first frame flag
 
-  while (y < target_y) { 
-    if (!first) { //on frames not first, call erase to clean up where piece was
-      draw_anim(col, y, piece_r, color); 
+  while (y < target_y) {
+    if (!first) {  // on frames not first, call erase to clean up where piece
+                   // was
+      draw_anim(col, y, piece_r, color);
       erase_anim_selective(col, prev_y, y, piece_r);
-    } else { 
+    } else {
       draw_anim(col, y, piece_r, color);
     }
-    delay_loop(45000); //control animation speed
+    delay_loop(45000);  // control animation speed
 
-    first = 0; //no longer first flag
-    prev_y = y; 
+    first = 0;  // no longer first flag
+    prev_y = y;
     velocity += 2;
     y += velocity;
-    if (y > target_y) y = target_y; //prevent from overshooting target
+    if (y > target_y) y = target_y;  // prevent from overshooting target
   }
 
   // Snap to final position and clean up
@@ -510,7 +516,6 @@ void drop_piece_animated(int col, int piece) {
   board[target_row][col] = piece;
   draw_cell(target_row, col);
 }
-
 
 //--------------------------------------------------LOGIC.C-------------------------------------------------------//
 
@@ -649,8 +654,8 @@ void runGame() {
     int expired = timer_expired;
     __asm__ volatile("csrs mstatus, %0" ::"r"(0b1000));  // re-enable interrupts
 
-
-    //Pulse all inputs, ensuring they dont cause issues by persisting accross clock cycles
+    // Pulse all inputs, ensuring they dont cause issues by persisting accross
+    // clock cycles
 
     short int cursorColor = (currentPlayer == PLAYER1) ? RED : YELLOW;
 
@@ -666,7 +671,7 @@ void runGame() {
       cursorColor = (currentPlayer == PLAYER1) ? RED : YELLOW;
       draw_cursor(currentColumn, cursorColor);
       reset_timer();
-      lastDrawnSeconds = -1; //so new 10 gets drawn immediately
+      lastDrawnSeconds = -1;  // so new 10 gets drawn immediately
       prevInput = kbUserInput;
       continue;
     }
@@ -675,12 +680,14 @@ void runGame() {
       currentColumn--;
       draw_cursor(currentColumn, cursorColor);
     }
-    if (kbUserInput == RIGHT && prevInput != RIGHT && currentColumn < COLS - 1) {
+    if (kbUserInput == RIGHT && prevInput != RIGHT &&
+        currentColumn < COLS - 1) {
       currentColumn++;
       draw_cursor(currentColumn, cursorColor);
     }
 
-    if (kbUserInput == ENTER && prevInput != ENTER && is_valid_col(currentColumn)) {
+    if (kbUserInput == ENTER && prevInput != ENTER &&
+        is_valid_col(currentColumn)) {
       drop_piece_animated(currentColumn, currentPlayer);
 
       // Find the row where the piece landed (topmost non-empty in this column)
