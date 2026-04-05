@@ -510,6 +510,44 @@ void drop_piece_animated(int col, int piece) {
   // Snap to final position and clean up
   draw_anim(col, target_y, piece_r, color);
   erase_anim_selective(col, prev_y, target_y, piece_r);
+  delay_loop(30000);  // brief pause before bounce begins
+
+  // Phase 2: Bounce animation
+  // Piece bounces 3 times with decreasing height for a natural landing feel
+  // bounce_height starts at ~1 cell height and shrinks each iteration
+  int bounce_height = (CELL_SIZE + CELL_GAP);  // ~30px, almost one full cell
+  int b;
+  for (b = 0; b < 3 && bounce_height >= 4; b++) {
+    int prev_offset = 0;
+
+    // Rise - piece moves upward from target position
+    int offset;
+    for (offset = 2; offset <= bounce_height; offset += 2) {
+      int new_y = target_y - offset;
+      int old_y = target_y - prev_offset;
+      draw_anim(col, new_y, piece_r, color);
+      erase_anim_selective(col, old_y, new_y, piece_r);
+      delay_loop(36000);
+      prev_offset = offset;
+    }
+
+    // Fall back down - piece drops back to target position
+    for (offset = bounce_height - 2; offset >= 0; offset -= 2) {
+      int new_y = target_y - offset;
+      int old_y = target_y - prev_offset;
+      draw_anim(col, new_y, piece_r, color);
+      erase_anim_selective(col, old_y, new_y, piece_r);
+      delay_loop(36000);
+      prev_offset = offset;
+    }
+
+    // Ensure piece ends exactly at target_y after each bounce
+    draw_anim(col, target_y, piece_r, color);
+    erase_anim_selective(col, target_y - prev_offset, target_y, piece_r);
+
+    // Each bounce is ~40% the height of the previous one
+    bounce_height = bounce_height * 2 / 5;  // ~30 -> 12 -> 4
+  }
 
   // Final cleanup of all holes pieces touched
   erase_anim_all(col, target_y, piece_r);
