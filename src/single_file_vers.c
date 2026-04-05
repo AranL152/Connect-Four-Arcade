@@ -177,7 +177,7 @@ void enable_interrupts(void) {
 //--------------------------------------------------VGA.C-------------------------------------------------------//
 #define VGA_PIXEL_BUFFER 0xC8000000
 #define VGA_CTRL_PTR 0xFF203020
-#define PS2_BASE 0xFF200100
+//#define PS2_BASE 0xFF200100
 
 #define SCREEN_W 320
 #define SCREEN_H 240
@@ -624,6 +624,8 @@ void resetBoard() {
 }
 
 //--------------------------------------------------MAIN.C-------------------------------------------------------//
+
+void runGame();
 
 int main() {
   volatile int* pixel_ctrl_ptr = (int*)VGA_CTRL_PTR;
