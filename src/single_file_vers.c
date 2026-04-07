@@ -12,6 +12,8 @@
 #define LEDR_DEST ((volatile int*)(LEDR_BASE))
 
 // Constant names for input PS/2 codes for relevant inputs
+#define UP_CODE   0x75
+#define DOWN_CODE 0x72
 #define LEFT_CODE 0x6B
 #define RIGHT_CODE 0x74
 #define ENTER_CODE 0x5A
@@ -32,7 +34,7 @@
 #define TURN_TIME 10          // seconds per move
 
 // Define internal alias for keyboard input
-typedef enum { NONE, LEFT, RIGHT, ENTER } kbInputKey;
+typedef enum { NONE, LEFT, RIGHT, ENTER, UP, DOWN} kbInputKey;
 volatile kbInputKey currInput = NONE;
 
 // Timer globals - ISR decrements every second
@@ -102,6 +104,12 @@ void PS2_ISR(void) {
         break;
       case ENTER_CODE:
         currInput = ENTER;
+        break;
+      case UP_CODE:
+        currInput = UP;
+        break;
+      case DOWN_CODE:
+        currInput = DOWN;
         break;
       default:
         break;
@@ -187,7 +195,12 @@ void enable_interrupts(void) {
 #define RED 0xF800
 #define BLUE 0x001F
 #define CYAN 0x07FF
-#define YELLOW 0xFFE0
+#define YELLOW 0xFEA0
+#define DARK_YELLOW 0x8400
+	
+	
+#define CHAR_HEIGHT 7
+#define CHAR_WIDTH 6
 
 #define ROWS 6
 #define COLS 7
@@ -209,6 +222,8 @@ int extended_key;
 int break_code;
 
 // 5x7 bitmap font - space (0x20) through '9' (0x39)
+//ChatGPT extended bitmap
+//Prompt: give me the bitmap codes for the alphabet
 static const unsigned char font5x7[][7] = {
     {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},  // space
     {0x04, 0x04, 0x04, 0x04, 0x04, 0x00, 0x04},  // !
@@ -236,13 +251,49 @@ static const unsigned char font5x7[][7] = {
     {0x1F, 0x01, 0x02, 0x04, 0x08, 0x08, 0x08},  // 7
     {0x0E, 0x11, 0x11, 0x0E, 0x11, 0x11, 0x0E},  // 8
     {0x0E, 0x11, 0x11, 0x0F, 0x01, 0x11, 0x0E},  // 9
+    {0x0E, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}, // A
+    {0x1E, 0x11, 0x11, 0x1E, 0x11, 0x11, 0x1E}, // B
+    {0x0E, 0x11, 0x10, 0x10, 0x10, 0x11, 0x0E}, // C
+    {0x1E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x1E}, // D
+    {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x1F}, // E
+    {0x1F, 0x10, 0x10, 0x1E, 0x10, 0x10, 0x10}, // F
+    {0x0E, 0x11, 0x10, 0x13, 0x11, 0x11, 0x0E}, // G
+    {0x11, 0x11, 0x11, 0x1F, 0x11, 0x11, 0x11}, // H
+    {0x0E, 0x04, 0x04, 0x04, 0x04, 0x04, 0x0E}, // I
+    {0x01, 0x01, 0x01, 0x01, 0x11, 0x11, 0x0E}, // J
+    {0x11, 0x12, 0x14, 0x18, 0x14, 0x12, 0x11}, // K
+    {0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x1F}, // L
+    {0x11, 0x1B, 0x15, 0x15, 0x11, 0x11, 0x11}, // M
+    {0x11, 0x11, 0x19, 0x15, 0x13, 0x11, 0x11}, // N
+    {0x0E, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, // O
+    {0x1E, 0x11, 0x11, 0x1E, 0x10, 0x10, 0x10}, // P
+    {0x0E, 0x11, 0x11, 0x11, 0x15, 0x12, 0x0D}, // Q
+    {0x1E, 0x11, 0x11, 0x1E, 0x14, 0x12, 0x11}, // R
+    {0x0F, 0x10, 0x10, 0x0E, 0x01, 0x01, 0x1E}, // S
+    {0x1F, 0x04, 0x04, 0x04, 0x04, 0x04, 0x04}, // T
+    {0x11, 0x11, 0x11, 0x11, 0x11, 0x11, 0x0E}, // U
+    {0x11, 0x11, 0x11, 0x11, 0x11, 0x0A, 0x04}, // V
+    {0x11, 0x11, 0x11, 0x15, 0x15, 0x15, 0x0A}, // W
+    {0x11, 0x11, 0x0A, 0x04, 0x0A, 0x11, 0x11}, // X
+    {0x11, 0x11, 0x0A, 0x04, 0x04, 0x04, 0x04}, // Y
+    {0x1F, 0x01, 0x02, 0x04, 0x08, 0x10, 0x1F}, // Z
 };
+
 
 void plot_pixel(int x, int y, short int color) {
   if (x < 0 || x >= SCREEN_W || y < 0 || y >= SCREEN_H) return;
   volatile short int* vga =
       (volatile short int*)(pixel_buffer_start + (y << 10) + (x << 1));
   *vga = color;
+}
+
+//Draw diemX by diemY block
+void plot_block(int x, int y, short int color, int diemeX, int diemY) {
+  for (int dx = 0; dx < diemeX; dx++){
+    for (int dy = 0; dy < diemY; dy++){
+      plot_pixel(dx + x, dy + y, color);
+    }
+  }
 }
 
 void clear_screen(void) {
@@ -284,21 +335,62 @@ short int lighten565(short int color, int amt) {
   b = b + amt < 32 ? b + amt : 31;
   return (short int)((r << 11) | (g << 5) | b);
 }
-//
 
 void draw_char(int x, int y, char c, short int color) {
   int idx;
-  if (c >= 0x20 && c <= 0x39)  // space through '9'
-    idx = c - 0x20;
+	//Contiguous hex ascii values for the symbols (space->/) in bitmap
+	//Used LLM for conversions
+	if (c >= 0x20 && c <0x2F)
+		idx = c - 0x20;
+//Start point 0 used to find all char indices, shifted by start of 0
+  else if (c >= '0' && c <= '9')
+    idx = (c - '0') + 16;
+	//Start point A used to find all char indices, shifted by start of A
+  else if (c >= 'A' && c <= 'Z')
+	  idx = (c-'A') + 26;
+  else if (c == ' ')
+	  idx = 0;
   else
     return;
-  int row, col;
-  for (row = 0; row < 7; row++) {
+  for (int row = 0; row < 7; row++) {
     unsigned char line = font5x7[idx][row];
-    for (col = 0; col < 5; col++)
+    for (int col = 0; col < 5; col++)
       if (line & (0x10 >> col)) plot_pixel(x + col, y + row, color);
   }
 }
+
+void draw_char_scaled(int x, int y, char c, short int color, int scale) {
+  int idx;
+	//Contiguous hex ascii values for the symbols (space->/) in bitmap
+	//Used LLM for conversions
+	if (c >= 0x20 && c <= 0x2F)
+		idx = c - 0x20;
+//Start point 0 used to find all char indices, shifted by start of 0
+  else if (c >= '0' && c <= '9')
+    idx = (c - '0') + 16;
+	//Start point A used to find all char indices, shifted by start of A
+  else if (c >= 'A' && c <= 'Z')
+	  idx = (c-'A') + 26;
+  else
+    return;
+  for (int row = 0; row < 7; row++) {
+    unsigned char line = font5x7[idx][row];
+    for (int col = 0; col < 5; col++)
+      if (line & (0x10 >> col)) plot_block(x + col * scale, y + row * scale, color, scale, scale);
+  }
+}
+
+void draw_text_scaled(int x, int y, char *text, short int colour, int scale) {
+	//Calculate text length
+	int msgLengthInChar = 0;
+	while (text[msgLengthInChar] != '\0') msgLengthInChar++;
+	
+	for (int currChar = 0; text[currChar] != '\0'; currChar++){
+		draw_char_scaled(x + currChar * (CHAR_WIDTH * scale), (int)y, text[currChar], colour, scale);
+	
+	}
+}
+
 
 // Draw countdown timer to the right of the board
 // Shows seconds left in the current player's color
@@ -663,17 +755,6 @@ void resetBoard() {
 
 //--------------------------------------------------MAIN.C-------------------------------------------------------//
 
-void runGame();
-
-int main() {
-  volatile int* pixel_ctrl_ptr = (int*)VGA_CTRL_PTR;
-  pixel_buffer_start = *pixel_ctrl_ptr;
-  PS2_SETUP();
-  TIMER_SETUP();
-  enable_interrupts();
-
-  runGame();
-}
 
 void runGame() {
   // Acquire keyboard input
@@ -695,9 +776,6 @@ void runGame() {
     int sec = timer_seconds;
     int expired = timer_expired;
     __asm__ volatile("csrs mstatus, %0" ::"r"(0b1000));  // re-enable interrupts
-
-    // Pulse all inputs, ensuring they dont cause issues by persisting accross
-    // clock cycles
 
     short int cursorColor = (currentPlayer == PLAYER1) ? RED : YELLOW;
 
@@ -752,4 +830,200 @@ void runGame() {
     }
     prevInput = kbUserInput;
   }
+}
+
+#define LS_BGCOLOR_FUNCTION(y) (((y) * 20 / SCREEN_H) + 7)
+
+void drawLoadingBG(){
+	for (int y = 0; y < SCREEN_H; y++) {
+    	for (int x = 0; x < SCREEN_W; x++) {
+        	//Select subset of blue bits, only 7 to 28
+			//Cleanly map inbetween colours to scale with y
+			//short int currBlue = 7 + ((y * 20 / SCREEN_H));
+			short int currBlue = LS_BGCOLOR_FUNCTION(y);
+        	plot_pixel(x, y, currBlue);
+    	}
+	}
+}
+
+void drawSelectArrow(int x, int y, short int colour, int length){
+	for (int curLen = 0; curLen <= length; curLen++){
+		plot_pixel(x - curLen, y + curLen, colour);
+		plot_pixel(x - curLen, y - curLen, colour);
+		
+		//Fill empty space
+		for (int currFillPoint = y + curLen; currFillPoint > y - curLen; currFillPoint --){
+			plot_pixel(x - curLen, currFillPoint, colour);
+		}
+	}
+	
+}
+
+
+
+void eraseSelectArrow(int x, int y, int length){
+	for (int curLen = 0; curLen <= length; curLen++){
+		plot_pixel(x - curLen, y + curLen, LS_BGCOLOR_FUNCTION(y + curLen));
+		plot_pixel(x - curLen, y - curLen, LS_BGCOLOR_FUNCTION(y - curLen));
+		
+		//Fill empty space
+		for (int currFillPoint = y + curLen; currFillPoint > y - curLen; currFillPoint --){
+			plot_pixel(x - curLen, currFillPoint, LS_BGCOLOR_FUNCTION(currFillPoint));
+		}
+	}
+	
+}
+
+
+int loadScreen(){
+	
+	// Acquire keyboard input
+ 	kbInputKey kbUserInput;
+	
+	static kbInputKey prevInput = NONE;
+
+	clear_screen();
+	
+	drawLoadingBG();
+	
+	int titleXPos = 79;
+	int titleYPos = 83;
+	
+	// shadow - slight shift and under title
+	draw_text_scaled(titleXPos + 2, titleYPos + 2, "CONNECT 4", DARK_YELLOW, 3); 
+	draw_text_scaled(titleXPos, titleYPos, "CONNECT 4", YELLOW , 3); 
+	
+	int playerTitleXPos = 140;
+	int playerTitleYPos = 119;
+	
+	int AITitleXPos = playerTitleXPos;
+	int AITitleYPos = 139;
+	
+	//plot_block(playerTitleXPos - 5, playerTitleYPos - 4, 0x03BF, 45, 15);
+	//plot_block(AITitleXPos - 5, AITitleYPos - 4, 0x03BF, 45, 15);
+	
+	draw_text_scaled(playerTitleXPos + 1, playerTitleYPos + 1, "PLAYER", DARK_YELLOW, 1); 
+	draw_text_scaled(playerTitleXPos, playerTitleYPos, "PLAYER", WHITE, 1); 
+	
+	draw_text_scaled((AITitleXPos + 12) + 1, AITitleYPos + 1, "AI", DARK_YELLOW, 1); 
+	draw_text_scaled((AITitleXPos + 12), AITitleYPos, "AI", WHITE, 1); 
+	
+	//Draw initial cursor
+	//Start on top button;
+	int cursorXPos = 133;
+	int cursorAIYPos = AITitleYPos + 3;
+	int cursorPlayerYPos = playerTitleYPos + 3;
+			
+	int currModeSel = cursorPlayerYPos;
+	drawSelectArrow(cursorXPos, currModeSel, RED, 4);
+	
+	//Poll for enter key to go to game
+	while(1){
+    
+		kbUserInput = currInput;
+
+		if (kbUserInput == UP && prevInput != UP && currModeSel == cursorAIYPos){
+			eraseSelectArrow(cursorXPos, currModeSel, 4);
+			currModeSel = cursorPlayerYPos;
+			drawSelectArrow(cursorXPos, currModeSel, RED, 4);
+		}
+		
+		if (kbUserInput == DOWN && prevInput != DOWN && currModeSel == cursorPlayerYPos) {
+			eraseSelectArrow(cursorXPos, currModeSel, 4);
+			currModeSel = cursorAIYPos;
+			drawSelectArrow(cursorXPos, currModeSel, RED, 4);
+		}
+		
+		
+		if (kbUserInput == ENTER && prevInput != ENTER){
+			currInput = NONE;
+			if (currModeSel == cursorPlayerYPos) return 0;
+			return 1;
+		}
+		
+		prevInput = kbUserInput;
+  }
+	
+	
+}
+
+
+void endScreen(){
+
+}
+
+
+#define AUDIO_BASE 0xFF203040
+#define TsampleMS 0.125
+#define SAMPLES_PER_MS (1.0/TsampleMS)
+#define MAX 0x7FFFFF
+#define MIN -8388608
+
+void playMusicalNote(int freq, int durationInMs) {
+  // Load audio code
+  volatile int* audioPtr = (int*)AUDIO_BASE;
+
+  // Track samples left half of the sampling (pos or neg half)
+  int samplesLeft = 0;
+
+  // Tracke samples given vs samples needed for the time duration and stop at
+  // excess
+  int totalSamplesWritten = 0;
+  int totalSampleDuration = durationInMs * SAMPLES_PER_MS;
+
+  float Tcurr = 1000.0 / freq;
+  float numEachSamples = 0.5 * (Tcurr / TsampleMS);
+
+  while (totalSamplesWritten < totalSampleDuration) {
+    // how empty/full FIFO's are
+    int fifospace = *(audioPtr + 1);
+    int value;
+
+    // check WSLC and WSRC for if output is empty (delete sign extension)
+    if (((fifospace >> 24) & 0xFF) > 0 && ((fifospace >> 16) & 0xFF) > 0) {
+      // P1: If we are in the first half, positive samples only
+      if (samplesLeft < numEachSamples) {
+        value = MAX;
+        samplesLeft++;
+
+      }
+
+      // P2: Positive samples done, negative sample half
+      else if ((samplesLeft >= numEachSamples) &&
+               (samplesLeft <= 2 * numEachSamples)) {
+        value = MIN;
+        samplesLeft++;
+
+      }
+
+      // Done negative samples, reset samplesLeft, reset value to MAX part of
+      // loop
+      else if (samplesLeft > 2 * numEachSamples) {
+        value = MAX;
+        samplesLeft = 0;
+      }
+
+      // Store to left/right (output FIFO)
+      *(audioPtr + 2) = value;
+      *(audioPtr + 3) = value;
+
+      // Increment total samples written after write
+      totalSamplesWritten++;
+    }
+  }
+}
+
+
+
+int main() {
+  volatile int* pixel_ctrl_ptr = (int*)VGA_CTRL_PTR;
+  pixel_buffer_start = *pixel_ctrl_ptr;
+  PS2_SETUP();
+  TIMER_SETUP();
+  enable_interrupts();
+
+ 	// 0 means player mode
+	//1 means AI mode
+  int currentGameMode = loadScreen();
+  runGame();
 }
