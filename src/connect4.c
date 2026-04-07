@@ -2,7 +2,7 @@
 // As of right now, this is the only correct version
 // Other files are incomplete
 
-//--------------------------------------------------kb_decoder.C-------------------------------------------------------//
+//--------------------------------------------------HARDWARE_MANAGER.C-------------------------------------------------------//
 #define LEDR_BASE 0xFF200000
 #define PS2_BASE 0xFF200100
 
@@ -139,7 +139,7 @@ void PS2_SETUP(void) {
   // When RVALID is 1, FIFO has values to read
   // Keep reading until empty
   while ((*PS2_DATA) & 0x8000) {
-    int garbage = *PS2_DATA;
+    (void)*PS2_DATA;
   }
 
   // Enable PS2 device level interrupts
@@ -214,7 +214,7 @@ void playMusicalNote(int freq, int durationInMs) {
   while (totalSamplesWritten < totalSampleDuration) {
     // how empty/full FIFO's are
     int fifospace = *(audioPtr + 1);
-    int value;
+    int value = 0;
 
     // check WSLC and WSRC for if output is empty (delete sign extension)
     if (((fifospace >> 24) & 0xFF) > 0 && ((fifospace >> 16) & 0xFF) > 0) {
@@ -931,127 +931,7 @@ int get_ai_move() {
   return best_col;
 }
 
-//--------------------------------------------------MAIN.C-------------------------------------------------------//
-
-int playerWinner = -1;
-
-short int runGame(int currentGameMode) {
-  // Acquire keyboard input
-  kbInputKey kbUserInput, prevInput;
-  prevInput = NONE;
-
-  int currentPlayer = PLAYER1;
-  int currentColumn = CURSOR_START_COL;
-  int lastDrawnSeconds = -1;  // tracks last displayed value to avoid flicker
-
-  clear_screen();
-  draw_board(currentColumn, RED);
-  reset_timer();
-
-  //Game start jingle
-  playMusicalNote(784, 100);
-  playMusicalNote(659, 100);
-  playMusicalNote(523, 100);
-  playMusicalNote(784, 100);
-
-  while (1) {
-    // AI mode: PLAYER2 is the AI, make its move automatically
-    if (currentGameMode == 1 && currentPlayer == PLAYER2) {
-      int aiCol = get_ai_move();
-      drop_piece_animated(aiCol, PLAYER2);
-      int aiRow;
-      for (aiRow = 0; aiRow < ROWS; aiRow++) {
-        if (board[aiRow][aiCol] != EMPTY) break;
-      }
-      int winState = winDetected(aiRow, aiCol, PLAYER2);
-      if (winState) {
-        playerWinner = YELLOW;
-        return 1;
-      }
-      if (DRAW_DETECTED(boardFull(), winState)) return 0;
-      currentPlayer = PLAYER1;
-      draw_cursor(currentColumn, RED);
-      reset_timer();
-      lastDrawnSeconds = -1;
-      continue;
-    }
-
-    __asm__ volatile("csrc mstatus, %0" ::"r"(0b1000));  // disable interrupts
-    kbUserInput = currInput;
-    currInput = NONE;
-    int sec = timer_seconds;
-    int expired = timer_expired;
-    __asm__ volatile("csrs mstatus, %0" ::"r"(0b1000));  // re-enable interrupts
-
-    short int cursorColor = (currentPlayer == PLAYER1) ? RED : YELLOW;
-
-    // Only redraw timer when the value changes
-    if (sec != lastDrawnSeconds) {
-      draw_timer(sec, cursorColor);
-      lastDrawnSeconds = sec;
-    }
-
-    // Timer ran out - skip this players turn
-    if (expired) {
-      currentPlayer = (currentPlayer == PLAYER1) ? PLAYER2 : PLAYER1;
-      cursorColor = (currentPlayer == PLAYER1) ? RED : YELLOW;
-      draw_cursor(currentColumn, cursorColor);
-      reset_timer();
-      playMusicalNote(200, 400);
-      lastDrawnSeconds = -1;  // so new 10 gets drawn immediately
-      prevInput = kbUserInput;
-      continue;
-    }
-
-    if (kbUserInput == LEFT && prevInput != LEFT && currentColumn > 0) {
-      currentColumn--;
-      draw_cursor(currentColumn, cursorColor);
-      playMusicalNote(880, 30);
-    }
-    if (kbUserInput == RIGHT && prevInput != RIGHT && currentColumn < COLS - 1) {
-      currentColumn++;
-      draw_cursor(currentColumn, cursorColor);
-      playMusicalNote(880, 30);
-    }
-
-    if (kbUserInput == ENTER && prevInput != ENTER) {
-      if (is_valid_col(currentColumn)){
-        drop_piece_animated(currentColumn, currentPlayer);
-        playMusicalNote(250, 120);
-
-        // Find the row where the piece landed (topmost non-empty in this column)
-        int currRow;
-        for (currRow = 0; currRow < ROWS; currRow++) {
-          if (board[currRow][currentColumn] != EMPTY) break;
-        }
-
-        int winState = winDetected(currRow, currentColumn, currentPlayer);
-        int drawState = DRAW_DETECTED(boardFull(), winState);
-
-        if (winState) {
-          playerWinner = (currentPlayer == PLAYER1) ? RED : YELLOW;
-          return 1;
-        }
-
-        if (drawState) return 0;
-
-        // Swap player and reset turn timer
-        currentPlayer = (currentPlayer == PLAYER1) ? PLAYER2 : PLAYER1;
-        cursorColor = (currentPlayer == PLAYER1) ? RED : YELLOW;
-        draw_cursor(currentColumn, cursorColor);
-        playMusicalNote(880, 30);
-        reset_timer();
-        lastDrawnSeconds = -1;
-      }
-      else { //Noise to reject placement
-        playMusicalNote(150, 200);
-      }
-    }
-
-    prevInput = kbUserInput;
-  }
-}
-
+//--------------------------------------------------SPLASH_SCREEN.C-------------------------------------------------------//
 #define LS_BGCOLOR_FUNCTION(y) (((y) * 20 / SCREEN_H) + 7)
 
 void drawBlueGradientBG() {
@@ -1091,7 +971,7 @@ void eraseSelectArrow(int x, int y, int length) {
   }
 }
 
-int loadScreen() {
+int titleScreen() {
   // Acquire keyboard input
   kbInputKey kbUserInput;
   static kbInputKey prevInput = NONE;
@@ -1241,6 +1121,129 @@ void endScreen(int endCause, int playerWinnerCol) {
 
 
 
+//--------------------------------------------------MAIN.C-------------------------------------------------------//
+
+int playerWinner = -1;
+
+short int runGame(int currentGameMode) {
+  // Acquire keyboard input
+  kbInputKey kbUserInput, prevInput;
+  prevInput = NONE;
+
+  int currentPlayer = PLAYER1;
+  int currentColumn = CURSOR_START_COL;
+  int lastDrawnSeconds = -1;  // tracks last displayed value to avoid flicker
+
+  clear_screen();
+  draw_board(currentColumn, RED);
+  reset_timer();
+
+  //Game start jingle
+  playMusicalNote(784, 100);
+  playMusicalNote(659, 100);
+  playMusicalNote(523, 100);
+  playMusicalNote(784, 100);
+
+  while (1) {
+    // AI mode: PLAYER2 is the AI, make its move automatically
+    if (currentGameMode == 1 && currentPlayer == PLAYER2) {
+      int aiCol = get_ai_move();
+      drop_piece_animated(aiCol, PLAYER2);
+      int aiRow;
+      for (aiRow = 0; aiRow < ROWS; aiRow++) {
+        if (board[aiRow][aiCol] != EMPTY) break;
+      }
+      int winState = winDetected(aiRow, aiCol, PLAYER2);
+      if (winState) {
+        playerWinner = YELLOW;
+        return 1;
+      }
+      if (DRAW_DETECTED(boardFull(), winState)) return 0;
+      currentPlayer = PLAYER1;
+      draw_cursor(currentColumn, RED);
+      reset_timer();
+      lastDrawnSeconds = -1;
+      continue;
+    }
+
+    __asm__ volatile("csrc mstatus, %0" ::"r"(0b1000));  // disable interrupts
+    kbUserInput = currInput;
+    currInput = NONE;
+    int sec = timer_seconds;
+    int expired = timer_expired;
+    __asm__ volatile("csrs mstatus, %0" ::"r"(0b1000));  // re-enable interrupts
+
+    short int cursorColor = (currentPlayer == PLAYER1) ? RED : YELLOW;
+
+    // Only redraw timer when the value changes
+    if (sec != lastDrawnSeconds) {
+      draw_timer(sec, cursorColor);
+      lastDrawnSeconds = sec;
+    }
+
+    // Timer ran out - skip this players turn
+    if (expired) {
+      currentPlayer = (currentPlayer == PLAYER1) ? PLAYER2 : PLAYER1;
+      cursorColor = (currentPlayer == PLAYER1) ? RED : YELLOW;
+      draw_cursor(currentColumn, cursorColor);
+      reset_timer();
+      playMusicalNote(200, 400);
+      lastDrawnSeconds = -1;  // so new 10 gets drawn immediately
+      prevInput = kbUserInput;
+      continue;
+    }
+
+    if (kbUserInput == LEFT && prevInput != LEFT && currentColumn > 0) {
+      currentColumn--;
+      draw_cursor(currentColumn, cursorColor);
+      playMusicalNote(880, 30);
+    }
+    if (kbUserInput == RIGHT && prevInput != RIGHT && currentColumn < COLS - 1) {
+      currentColumn++;
+      draw_cursor(currentColumn, cursorColor);
+      playMusicalNote(880, 30);
+    }
+
+    if (kbUserInput == ENTER && prevInput != ENTER) {
+      if (is_valid_col(currentColumn)){
+        drop_piece_animated(currentColumn, currentPlayer);
+        playMusicalNote(250, 120);
+
+        // Find the row where the piece landed (topmost non-empty in this column)
+        int currRow;
+        for (currRow = 0; currRow < ROWS; currRow++) {
+          if (board[currRow][currentColumn] != EMPTY) break;
+        }
+
+        int winState = winDetected(currRow, currentColumn, currentPlayer);
+        int drawState = DRAW_DETECTED(boardFull(), winState);
+
+        if (winState) {
+          playerWinner = (currentPlayer == PLAYER1) ? RED : YELLOW;
+          return 1;
+        }
+
+        if (drawState) return 0;
+
+        // Swap player and reset turn timer
+        currentPlayer = (currentPlayer == PLAYER1) ? PLAYER2 : PLAYER1;
+        cursorColor = (currentPlayer == PLAYER1) ? RED : YELLOW;
+        draw_cursor(currentColumn, cursorColor);
+        playMusicalNote(880, 30);
+        reset_timer();
+        lastDrawnSeconds = -1;
+      }
+      else { //Noise to reject placement
+        playMusicalNote(150, 200);
+      }
+    }
+
+    prevInput = kbUserInput;
+  }
+}
+
+
+
 int main() {
   volatile int* pixel_ctrl_ptr = (int*)VGA_CTRL_PTR;
   pixel_buffer_start = *pixel_ctrl_ptr;
@@ -1251,7 +1254,7 @@ int main() {
   // 0 means player mode
   // 1 means AI mode
   while (1) {
-    int currentGameMode = loadScreen();
+    int currentGameMode = titleScreen();
     int endCause = runGame(currentGameMode);
     endScreen(endCause, playerWinner);
 
