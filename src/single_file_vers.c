@@ -671,12 +671,16 @@ void drop_piece_animated(int col, int piece) {
   // Phase 2: Bounce animation
   // Piece bounces 3 times with decreasing height for a natural landing feel
   // bounce_height starts at ~1 cell height and shrinks each iteration
-  int bounce_height = (CELL_SIZE + CELL_GAP);  // ~30px, almost one full cell
+  // Scale by row: bottom row gets full bounce, top row gets none
+  // Offset keeps middle rows bouncing noticeably while top row stays at 0
+  int bounce_height = target_row == 0
+                          ? 0
+                          : (CELL_SIZE + CELL_GAP) * (target_row + 2) / (ROWS + 1);
   int b;
   for (b = 0; b < 3 && bounce_height >= 4; b++) {
     int prev_offset = 0;
 
-    // Rise - piece moves upward from target position
+    // piece moves upward from target position
     int offset;
     for (offset = 2; offset <= bounce_height; offset += 2) {
       int new_y = target_y - offset;
@@ -817,6 +821,116 @@ void resetBoard() {
   }
 }
 
+//--------------------------------------------------AI.C-------------------------------------------------------//
+
+// How many moves ahead the AI looks - kept small for speed on hardware
+#define AI_DEPTH 4
+
+// Score a single 4-cell window from the AI's (PLAYER2) perspective
+// Awards points for AI piece groupings and penalizes opponent threats
+int eval_window(int a, int b, int c, int d) {
+  int win[4] = {a, b, c, d};
+  int ai_count = 0, opp_count = 0, empty = 0;
+  for (int i = 0; i < 4; i++) {
+    if (win[i] == PLAYER2)
+      ai_count++;
+    else if (win[i] == PLAYER1)
+      opp_count++;
+    else
+      empty++;
+  }
+  if (ai_count == 4) return 10000;               // AI win
+  if (ai_count == 3 && empty == 1) return 50;    // 3 in a row with space
+  if (ai_count == 2 && empty == 2) return 5;     // 2 in a row with space
+  if (opp_count == 3 && empty == 1) return -80;  // block opponent threat
+  return 0;
+}
+
+// Sum window scores in all four directions across the whole board
+// Used as the heuristic when minimax hits its depth limit
+int score_board() {
+  int score = 0;
+  // Horizontal windows
+  for (int r = 0; r < ROWS; r++)
+    for (int c = 0; c <= COLS - 4; c++)
+      score += eval_window(board[r][c], board[r][c + 1], board[r][c + 2],
+                           board[r][c + 3]);
+  // Vertical windows
+  for (int c = 0; c < COLS; c++)
+    for (int r = 0; r <= ROWS - 4; r++)
+      score += eval_window(board[r][c], board[r + 1][c], board[r + 2][c],
+                           board[r + 3][c]);
+  // Diagonal windows (down-right)
+  for (int r = 0; r <= ROWS - 4; r++)
+    for (int c = 0; c <= COLS - 4; c++)
+      score += eval_window(board[r][c], board[r + 1][c + 1],
+                           board[r + 2][c + 2], board[r + 3][c + 3]);
+  // Diagonal windows (up-right)
+  for (int r = 3; r < ROWS; r++)
+    for (int c = 0; c <= COLS - 4; c++)
+      score += eval_window(board[r][c], board[r - 1][c + 1],
+                           board[r - 2][c + 2], board[r - 3][c + 3]);
+  return score;
+}
+
+// Minimax search with alpha-beta pruning
+// maximizing=1 -> AI's turn (PLAYER2), 0 -> opponent's turn (PLAYER1)
+// alpha/beta bounds let us skip branches that cannot improve the result
+int minimax(int depth, int alpha, int beta, int maximizing) {
+  if (depth == 0 || boardFull()) return score_board();
+
+  if (maximizing) {
+    int best = -1000000;
+    for (int col = 0; col < COLS; col++) {
+      if (!is_valid_col(col)) continue;
+      int row = get_open_row(col);
+      board[row][col] = PLAYER2;  // simulate AI move
+      int val = winDetected(row, col, PLAYER2)
+                    ? 100000 + depth
+                    : minimax(depth - 1, alpha, beta, 0);
+      board[row][col] = EMPTY;  // undo move
+      if (val > best) best = val;
+      if (best > alpha) alpha = best;
+      if (alpha >= beta) break;  // prune remaining branches
+    }
+    return best;
+  } else {
+    int best = 1000000;
+    for (int col = 0; col < COLS; col++) {
+      if (!is_valid_col(col)) continue;
+      int row = get_open_row(col);
+      board[row][col] = PLAYER1;  // simulate opponent move
+      int val = winDetected(row, col, PLAYER1)
+                    ? -100000 - depth
+                    : minimax(depth - 1, alpha, beta, 1);
+      board[row][col] = EMPTY;  // undo move
+      if (val < best) best = val;
+      if (best < beta) beta = best;
+      if (alpha >= beta) break;  // prune remaining branches
+    }
+    return best;
+  }
+}
+
+// Picks the best column for the AI by trying every legal move and
+// running minimax on the resulting position - returns chosen column
+int get_ai_move() {
+  int best_col = COLS / 2;  // default to center
+  int best_score = -1000000;
+  for (int col = 0; col < COLS; col++) {
+    if (!is_valid_col(col)) continue;
+    int row = get_open_row(col);
+    board[row][col] = PLAYER2;
+    int val = minimax(AI_DEPTH - 1, -1000000, 1000000, 0);
+    board[row][col] = EMPTY;
+    if (val > best_score) {
+      best_score = val;
+      best_col = col;
+    }
+  }
+  return best_col;
+}
+
 //--------------------------------------------------MAIN.C-------------------------------------------------------//
 
 int playerWinner = -1;
@@ -841,6 +955,27 @@ short int runGame(int currentGameMode) {
   playMusicalNote(784, 100);
 
   while (1) {
+    // AI mode: PLAYER2 is the AI, make its move automatically
+    if (currentGameMode == 1 && currentPlayer == PLAYER2) {
+      int aiCol = get_ai_move();
+      drop_piece_animated(aiCol, PLAYER2);
+      int aiRow;
+      for (aiRow = 0; aiRow < ROWS; aiRow++) {
+        if (board[aiRow][aiCol] != EMPTY) break;
+      }
+      int winState = winDetected(aiRow, aiCol, PLAYER2);
+      if (winState) {
+        playerWinner = YELLOW;
+        return 1;
+      }
+      if (DRAW_DETECTED(boardFull(), winState)) return 0;
+      currentPlayer = PLAYER1;
+      draw_cursor(currentColumn, RED);
+      reset_timer();
+      lastDrawnSeconds = -1;
+      continue;
+    }
+
     __asm__ volatile("csrc mstatus, %0" ::"r"(0b1000));  // disable interrupts
     kbUserInput = currInput;
     currInput = NONE;
