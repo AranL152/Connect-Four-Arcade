@@ -751,7 +751,9 @@ void resetBoard() {
 
 //--------------------------------------------------MAIN.C-------------------------------------------------------//
 
-void runGame() {
+int playerWinner = -1;
+
+short int runGame(int currentGameMode) {
   // Acquire keyboard input
   kbInputKey kbUserInput, prevInput;
   prevInput = NONE;
@@ -814,7 +816,13 @@ void runGame() {
       int winState = winDetected(currRow, currentColumn, currentPlayer);
       int drawState = DRAW_DETECTED(boardFull(), winState);
 
-      if (winState || drawState) return;
+      if (winState) {
+        playerWinner = (currentPlayer == PLAYER1) ? RED : YELLOW;
+        ;
+        return 1;
+      }
+
+      if (drawState) return 0;
 
       // Swap player and reset turn timer
       currentPlayer = (currentPlayer == PLAYER1) ? PLAYER2 : PLAYER1;
@@ -829,12 +837,11 @@ void runGame() {
 
 #define LS_BGCOLOR_FUNCTION(y) (((y) * 20 / SCREEN_H) + 7)
 
-void drawLoadingBG() {
+void drawBlueGradientBG() {
   for (int y = 0; y < SCREEN_H; y++) {
     for (int x = 0; x < SCREEN_W; x++) {
       // Select subset of blue bits, only 7 to 28
       // Cleanly map inbetween colours to scale with y
-      // short int currBlue = 7 + ((y * 20 / SCREEN_H));
       short int currBlue = LS_BGCOLOR_FUNCTION(y);
       plot_pixel(x, y, currBlue);
     }
@@ -875,7 +882,7 @@ int loadScreen() {
 
   clear_screen();
 
-  drawLoadingBG();
+  drawBlueGradientBG();
 
   int titleXPos = 79;
   int titleYPos = 83;
@@ -937,7 +944,61 @@ int loadScreen() {
   }
 }
 
-void endScreen() {}
+void drawGreenGradientBG() {
+  for (int y = 0; y < SCREEN_H; y++) {
+    for (int x = 0; x < SCREEN_W; x++) {
+      // green is 32 to 2016
+      // Cleanly map inbetween colours to scale with y
+      short int green = (20 + ((y * 20 / SCREEN_H))) << 5;
+      plot_pixel(x, y, green);
+    }
+  }
+}
+
+void drawRedGradientBG() {
+  for (int y = 0; y < SCREEN_H; y++) {
+    for (int x = 0; x < SCREEN_W; x++) {
+      // Cleanly map inbetween colours to scale with y
+      short int red = (0 + ((y * 31 / SCREEN_H))) << 11;
+      plot_pixel(x, y, red);
+    }
+  }
+}
+
+// one will have to be past
+void endScreen(int endCause, int playerWinnerCol) {
+  int textYPos = 97;
+
+  // draw
+  if (endCause == 0) {
+    drawBlueGradientBG();
+    draw_text_scaled(109 + 2, textYPos + 2, "DRAW", DARK_YELLOW, 4);
+    draw_text_scaled(109, textYPos, "DRAW", YELLOW, 4);
+  }
+
+  // player win
+  if (endCause == 1) {
+    drawGreenGradientBG();
+    if (playerWinnerCol == YELLOW) {
+      draw_text_scaled(70 + 3, textYPos - 15 + 3, "YELLOW", BLACK, 5);
+      draw_text_scaled(70, textYPos - 15, "YELLOW", playerWinnerCol, 5);
+
+      draw_text_scaled(95 + 3, textYPos - 15 + 43 + 3, "WINS!", BLACK, 5);
+      draw_text_scaled(95, textYPos - 15 + 43, "WINS!", playerWinnerCol, 5);
+
+    } else if (playerWinnerCol == RED) {
+      draw_text_scaled(36 + 2, textYPos + 2, "RED WINS!", BLACK, 5);
+      draw_text_scaled(36, textYPos, "RED WINS!", playerWinnerCol, 5);
+    }
+  }
+
+  // player loss
+  if (endCause == 2) {
+    drawRedGradientBG();
+    draw_text_scaled(45 + 2, textYPos + 2, "YOU LOSE", DARK_YELLOW, 5);
+    draw_text_scaled(45, textYPos, "YOU LOSE", YELLOW, 5);
+  }
+}
 
 #define AUDIO_BASE 0xFF203040
 #define TsampleMS 0.125
@@ -1008,6 +1069,13 @@ int main() {
 
   // 0 means player mode
   // 1 means AI mode
-  int currentGameMode = loadScreen();
-  runGame();
+  while (1) {
+    int currentGameMode = loadScreen();
+    int endCause = runGame(currentGameMode);
+    endScreen(endCause, playerWinner);
+
+    while (1);
+  }
+  // Hold game at end and restart
+  // Temporary loop structure
 }
