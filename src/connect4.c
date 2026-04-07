@@ -1639,7 +1639,7 @@ void endScreen(int endCause, int playerWinnerCol) {
     playMusicalNote(311, 300);
   }
 
-  draw_text_scaled(75, 220, "PRESS ENTER TO RESTART", WHITE, 1);
+  draw_text_scaled(98, 220, "PRESS ENTER TO RESTART", WHITE, 1);
 }
 
 
@@ -1790,6 +1790,9 @@ int main() {
     currInput = NONE;
     while (currInput != ENTER);
     resetBoard();
+    currInput = NONE;
+    resetBoard();
+    continue;
   }
   // Hold game at end and restart
   // Temporary loop structure
