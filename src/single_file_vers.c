@@ -49,6 +49,9 @@ static void handler(void) __attribute__((interrupt("machine")));
 void PS2_ISR(void);
 void TIMER_ISR(void);
 
+//Used early on in code so declared here
+void playMusicalNote(int freq, int durationInMs);
+
 // Main body functions
 
 // Calls the ISR for each interrupt cause
@@ -126,6 +129,10 @@ void TIMER_ISR(void) {
     timer_seconds = 0;
     timer_expired = 1;
   }
+  //Play slow expiry sound
+  else if (timer_seconds <= 3 && timer_seconds >= 0){
+    playMusicalNote(660, 60);
+  }
 }
 
 void PS2_SETUP(void) {
@@ -180,6 +187,67 @@ void enable_interrupts(void) {
 
   // enable processor level interrupts
   __asm__ volatile("csrs mstatus, %0" ::"r"(mstatusVal));
+}
+
+#define AUDIO_BASE 0xFF203040
+#define TsampleMS 0.125
+#define SAMPLES_PER_MS (1.0 / TsampleMS)
+#define MAX 0x7FFFFF
+#define MIN -8388608
+
+//plays note of frequency for duration in ms
+void playMusicalNote(int freq, int durationInMs) {
+  // Load audio code
+  volatile int* audioPtr = (int*)AUDIO_BASE;
+
+  // Track samples left half of the sampling (pos or neg half)
+  int samplesLeft = 0;
+
+  // Tracke samples given vs samples needed for the time duration and stop at
+  // excess
+  int totalSamplesWritten = 0;
+  int totalSampleDuration = durationInMs * SAMPLES_PER_MS;
+
+  float Tcurr = 1000.0 / freq;
+  float numEachSamples = 0.5 * (Tcurr / TsampleMS);
+
+  while (totalSamplesWritten < totalSampleDuration) {
+    // how empty/full FIFO's are
+    int fifospace = *(audioPtr + 1);
+    int value;
+
+    // check WSLC and WSRC for if output is empty (delete sign extension)
+    if (((fifospace >> 24) & 0xFF) > 0 && ((fifospace >> 16) & 0xFF) > 0) {
+      // P1: If we are in the first half, positive samples only
+      if (samplesLeft < numEachSamples) {
+        value = MAX;
+        samplesLeft++;
+
+      }
+
+      // P2: Positive samples done, negative sample half
+      else if ((samplesLeft >= numEachSamples) &&
+               (samplesLeft <= 2 * numEachSamples)) {
+        value = MIN;
+        samplesLeft++;
+
+      }
+
+      // Done negative samples, reset samplesLeft, reset value to MAX part of
+      // loop
+      else if (samplesLeft > 2 * numEachSamples) {
+        value = MAX;
+        samplesLeft = 0;
+      }
+
+      // Store to left/right (output FIFO)
+      *(audioPtr + 2) = value;
+      *(audioPtr + 3) = value;
+
+      // Increment total samples written after write
+      totalSamplesWritten++;
+    }
+  }
 }
 
 //--------------------------------------------------VGA.C-------------------------------------------------------//
@@ -766,6 +834,12 @@ short int runGame(int currentGameMode) {
   draw_board(currentColumn, RED);
   reset_timer();
 
+  //Game start jingle
+  playMusicalNote(784, 100);
+  playMusicalNote(659, 100);
+  playMusicalNote(523, 100);
+  playMusicalNote(784, 100);
+
   while (1) {
     __asm__ volatile("csrc mstatus, %0" ::"r"(0b1000));  // disable interrupts
     kbUserInput = currInput;
@@ -788,6 +862,7 @@ short int runGame(int currentGameMode) {
       cursorColor = (currentPlayer == PLAYER1) ? RED : YELLOW;
       draw_cursor(currentColumn, cursorColor);
       reset_timer();
+      playMusicalNote(200, 400);
       lastDrawnSeconds = -1;  // so new 10 gets drawn immediately
       prevInput = kbUserInput;
       continue;
@@ -796,41 +871,48 @@ short int runGame(int currentGameMode) {
     if (kbUserInput == LEFT && prevInput != LEFT && currentColumn > 0) {
       currentColumn--;
       draw_cursor(currentColumn, cursorColor);
+      playMusicalNote(880, 30);
     }
-    if (kbUserInput == RIGHT && prevInput != RIGHT &&
-        currentColumn < COLS - 1) {
+    if (kbUserInput == RIGHT && prevInput != RIGHT && currentColumn < COLS - 1) {
       currentColumn++;
       draw_cursor(currentColumn, cursorColor);
+      playMusicalNote(880, 30);
     }
 
-    if (kbUserInput == ENTER && prevInput != ENTER &&
-        is_valid_col(currentColumn)) {
-      drop_piece_animated(currentColumn, currentPlayer);
+    if (kbUserInput == ENTER && prevInput != ENTER) {
+      if (is_valid_col(currentColumn)){
+        drop_piece_animated(currentColumn, currentPlayer);
+        playMusicalNote(250, 120);
 
-      // Find the row where the piece landed (topmost non-empty in this column)
-      int currRow;
-      for (currRow = 0; currRow < ROWS; currRow++) {
-        if (board[currRow][currentColumn] != EMPTY) break;
+        // Find the row where the piece landed (topmost non-empty in this column)
+        int currRow;
+        for (currRow = 0; currRow < ROWS; currRow++) {
+          if (board[currRow][currentColumn] != EMPTY) break;
+        }
+
+        int winState = winDetected(currRow, currentColumn, currentPlayer);
+        int drawState = DRAW_DETECTED(boardFull(), winState);
+
+        if (winState) {
+          playerWinner = (currentPlayer == PLAYER1) ? RED : YELLOW;
+          return 1;
+        }
+
+        if (drawState) return 0;
+
+        // Swap player and reset turn timer
+        currentPlayer = (currentPlayer == PLAYER1) ? PLAYER2 : PLAYER1;
+        cursorColor = (currentPlayer == PLAYER1) ? RED : YELLOW;
+        draw_cursor(currentColumn, cursorColor);
+        playMusicalNote(880, 30);
+        reset_timer();
+        lastDrawnSeconds = -1;
       }
-
-      int winState = winDetected(currRow, currentColumn, currentPlayer);
-      int drawState = DRAW_DETECTED(boardFull(), winState);
-
-      if (winState) {
-        playerWinner = (currentPlayer == PLAYER1) ? RED : YELLOW;
-        ;
-        return 1;
+      else { //Noise to reject placement
+        playMusicalNote(150, 200);
       }
-
-      if (drawState) return 0;
-
-      // Swap player and reset turn timer
-      currentPlayer = (currentPlayer == PLAYER1) ? PLAYER2 : PLAYER1;
-      cursorColor = (currentPlayer == PLAYER1) ? RED : YELLOW;
-      draw_cursor(currentColumn, cursorColor);
-      reset_timer();
-      lastDrawnSeconds = -1;
     }
+
     prevInput = kbUserInput;
   }
 }
@@ -877,11 +959,9 @@ void eraseSelectArrow(int x, int y, int length) {
 int loadScreen() {
   // Acquire keyboard input
   kbInputKey kbUserInput;
-
   static kbInputKey prevInput = NONE;
 
   clear_screen();
-
   drawBlueGradientBG();
 
   int titleXPos = 79;
@@ -899,6 +979,15 @@ int loadScreen() {
 
   // plot_block(playerTitleXPos - 5, playerTitleYPos - 4, 0x03BF, 45, 15);
   // plot_block(AITitleXPos - 5, AITitleYPos - 4, 0x03BF, 45, 15);
+
+  int noteDur = 200;
+  playMusicalNote(261, noteDur);
+  playMusicalNote(392, noteDur);
+  playMusicalNote(440, noteDur);
+  playMusicalNote(349, noteDur);
+  playMusicalNote(523, noteDur);
+  playMusicalNote(587, noteDur);
+
 
   draw_text_scaled(playerTitleXPos + 1, playerTitleYPos + 1, "PLAYER",
                    DARK_YELLOW, 1);
@@ -925,6 +1014,7 @@ int loadScreen() {
       eraseSelectArrow(cursorXPos, currModeSel, 4);
       currModeSel = cursorPlayerYPos;
       drawSelectArrow(cursorXPos, currModeSel, RED, 4);
+      playMusicalNote(880, 30);
     }
 
     if (kbUserInput == DOWN && prevInput != DOWN &&
@@ -932,6 +1022,7 @@ int loadScreen() {
       eraseSelectArrow(cursorXPos, currModeSel, 4);
       currModeSel = cursorAIYPos;
       drawSelectArrow(cursorXPos, currModeSel, RED, 4);
+      playMusicalNote(880, 30);
     }
 
     if (kbUserInput == ENTER && prevInput != ENTER) {
@@ -974,6 +1065,10 @@ void endScreen(int endCause, int playerWinnerCol) {
     drawBlueGradientBG();
     draw_text_scaled(109 + 2, textYPos + 2, "DRAW", DARK_YELLOW, 4);
     draw_text_scaled(109, textYPos, "DRAW", YELLOW, 4);
+
+    playMusicalNote(400, 200);
+    playMusicalNote(300, 200);
+    playMusicalNote(200, 200);
   }
 
   // player win
@@ -990,6 +1085,9 @@ void endScreen(int endCause, int playerWinnerCol) {
       draw_text_scaled(36 + 2, textYPos + 2, "RED WINS!", BLACK, 5);
       draw_text_scaled(36, textYPos, "RED WINS!", playerWinnerCol, 5);
     }
+    playMusicalNote(523, 150);
+    playMusicalNote(659, 150);
+    playMusicalNote(784, 150);
   }
 
   // player loss
@@ -997,68 +1095,16 @@ void endScreen(int endCause, int playerWinnerCol) {
     drawRedGradientBG();
     draw_text_scaled(45 + 2, textYPos + 2, "YOU LOSE", DARK_YELLOW, 5);
     draw_text_scaled(45, textYPos, "YOU LOSE", YELLOW, 5);
+
+    playMusicalNote(523, 300);
+    playMusicalNote(370, 300);
+    playMusicalNote(311, 300);
+
+   
   }
 }
 
-#define AUDIO_BASE 0xFF203040
-#define TsampleMS 0.125
-#define SAMPLES_PER_MS (1.0 / TsampleMS)
-#define MAX 0x7FFFFF
-#define MIN -8388608
 
-void playMusicalNote(int freq, int durationInMs) {
-  // Load audio code
-  volatile int* audioPtr = (int*)AUDIO_BASE;
-
-  // Track samples left half of the sampling (pos or neg half)
-  int samplesLeft = 0;
-
-  // Tracke samples given vs samples needed for the time duration and stop at
-  // excess
-  int totalSamplesWritten = 0;
-  int totalSampleDuration = durationInMs * SAMPLES_PER_MS;
-
-  float Tcurr = 1000.0 / freq;
-  float numEachSamples = 0.5 * (Tcurr / TsampleMS);
-
-  while (totalSamplesWritten < totalSampleDuration) {
-    // how empty/full FIFO's are
-    int fifospace = *(audioPtr + 1);
-    int value;
-
-    // check WSLC and WSRC for if output is empty (delete sign extension)
-    if (((fifospace >> 24) & 0xFF) > 0 && ((fifospace >> 16) & 0xFF) > 0) {
-      // P1: If we are in the first half, positive samples only
-      if (samplesLeft < numEachSamples) {
-        value = MAX;
-        samplesLeft++;
-
-      }
-
-      // P2: Positive samples done, negative sample half
-      else if ((samplesLeft >= numEachSamples) &&
-               (samplesLeft <= 2 * numEachSamples)) {
-        value = MIN;
-        samplesLeft++;
-
-      }
-
-      // Done negative samples, reset samplesLeft, reset value to MAX part of
-      // loop
-      else if (samplesLeft > 2 * numEachSamples) {
-        value = MAX;
-        samplesLeft = 0;
-      }
-
-      // Store to left/right (output FIFO)
-      *(audioPtr + 2) = value;
-      *(audioPtr + 3) = value;
-
-      // Increment total samples written after write
-      totalSamplesWritten++;
-    }
-  }
-}
 
 int main() {
   volatile int* pixel_ctrl_ptr = (int*)VGA_CTRL_PTR;
